@@ -2,42 +2,37 @@
 # Make predictions on test images
 
 import torch
-from skimage import io, transform
 from torch.utils.data import Dataset
 from torchvision import transforms
-from model import Net
-from utils import TestFile, Rescale, ToTensor, Normalize, show_dot
 import argparse
+from load import TumorImage, Rescale, ToTensor, Normalize
+from model import ResNet, BasicBlock
 
-MODEL_PATH = './model.pth'
+MODEL_PATH = './resnet34pre771.pth'
 
 
 def test_model(path):
-    image = io.imread(path)
-    image = transform.resize(image, (256, 256))
-
     device = torch.device("cuda")
-
-    model = Net()
+    model = ResNet(BasicBlock, [3,4,6,3])
     model = model.to(device)
-
     model.load_state_dict(torch.load(MODEL_PATH))
     model.eval()
 
     with torch.no_grad():
-        set = TestFile(path,
-                       transform=transforms.Compose([
-                           Rescale(256),
-                           ToTensor(),
-                           Normalize()
-                       ])
-                       )
-        loader = torch.utils.data.DataLoader(set)
-        for i, input in enumerate(loader):
-            image = input['image'].float().cuda().to(device)
-            coordinates = model(image).data
-            coordinates = coordinates.cpu().numpy()
-            print('{:.4f} {:.4f}'.format(coordinates[0][0], coordinates[0][1]))
+        dataset = TumorImage(path,
+                             transform=transforms.Compose([
+                                 Rescale(256),
+                                 ToTensor(),
+                                 Normalize()
+                             ]))
+
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=1)
+        for input in dataloader:
+            input = input.float().cuda().to(device)
+            output = model(input)
+            val = torch.max(output, 1)[1]
+            return val.view(-1).cpu().numpy()[0]
+
 
 
 def main():
@@ -46,7 +41,7 @@ def main():
     parser.add_argument('path', metavar='P', type=str,
                         help='path of file for prediction')
     args = parser.parse_args()
-    test_model(args.path)
+    print(test_model(args.path))
 
 
 if __name__ == '__main__':

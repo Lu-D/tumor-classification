@@ -19,7 +19,7 @@ warnings.filterwarnings("ignore")
 plt.ion()
 
 class TumorDataset(Dataset):
-    def __init__(self, mode='test', transform=None):
+    def __init__(self, mode='test', transform=None, preload=False):
         if mode == 'train':
             data = pd.read_csv('labels/Train_labels.csv')
             self.root = 'train'
@@ -30,6 +30,12 @@ class TumorDataset(Dataset):
         self.classes = data.columns[1:]
         self.images = data.values[:,0]
         self.labels = data.values[:, 1:]
+        self.preload = preload
+        if preload:
+            self.preloaded = []
+            for i in range(len(self.images)):
+                img_name = os.path.join(self.root, self.images[i] + '.jpg')
+                self.preloaded.append(io.imread(img_name))
 
     def __len__(self):
         return len(self.images)
@@ -37,12 +43,33 @@ class TumorDataset(Dataset):
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        img_name = os.path.join(self.root, self.images[idx] + '.jpg')
-        image = io.imread(img_name)
+        if self.preload:
+            image = self.preloaded[idx]
+        else:
+            img_name = os.path.join(self.root, self.images[idx] + '.jpg')
+            image = io.imread(img_name)
+
         if self.transform:
             image = self.transform(image)
-        sample = {'image': image, 'labels': self.labels[idx]}
+        # sample = {'image': image, 'labels': self.labels[idx]}
         return image, torch.from_numpy(np.uint8(self.labels[idx]))
+
+class TumorImage(Dataset):
+    def __init__(self, path, transform=None):
+        img_name = os.path.join(path)
+        self.image = [io.imread(img_name)]
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.image)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        image = self.image[idx]
+        if self.transform:
+            image = self.transform(image)
+        return image
 
 class Rescale(object):
 
@@ -59,8 +86,11 @@ class Rescale(object):
 
 class Normalize(object):
     def __init__(self, inplace=False):
-        self.mean = (0.5692824, 0.55365936, 0.5400631)
-        self.std = (0.1325967, 0.1339596, 0.14305606)
+        #dataset mean/std
+        # self.mean = (0.76964605, 0.54124683, 0.56347674)
+        # self.std = (0.1364224, 0.15036866, 0.1672849)
+        self.mean = [0.485, 0.456, 0.406]
+        self.std = [0.229, 0.224, 0.225]
         self.inplace = inplace
 
     def __call__(self, sample):
@@ -140,45 +170,3 @@ class RandomColorJitter(object):
             image = np.array(image)
             image = np.double(image) / 255.
         return image
-
-# n=5
-# dataset = pd.read_csv('labels/Train_labels.csv').values
-# imgs = dataset[:,0]
-# labels = dataset[:,1:]
-# y = dataset[5]
-# print('done')
-
-# def imshow(image, title=None):
-#     """Show image with landmarks"""
-#     image = image.numpy().transpose((1, 2, 0))
-#     inp = np.clip(image, 0, 1)
-#     plt.imshow(inp)
-#     if title is not None:
-#         plt.title(title)
-#     plt.pause(0.001)  # pause a bit so that plots are updated
-#
-#
-# dataset = TumorDataset('train',
-#                         transform=transforms.Compose([
-#                             Rescale(256),
-#                             RandomVerticalFlip(.5),
-#                             RandomHorizontalFlip(.5),
-#                             RandomColorJitter(0.9),
-#                             ToTensor()
-#                         ]))
-# dataloader = torch.utils.data.DataLoader(dataset, batch_size=4,
-#                                              shuffle=True, num_workers=4)
-# dataset_size = len(dataset)
-# class_names = dataset.classes
-#
-# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-#
-# # Get a batch of training data
-# inputs, classes = next(iter(dataloader))
-#
-# import torchvision
-#
-# # Make a grid from batch
-# out = torchvision.utils.make_grid(inputs)
-# imshow(out)
-# imshow(out, title=[class_names[np.where(x==1)[0][0]] for x in classes])
